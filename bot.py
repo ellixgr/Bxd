@@ -1,6 +1,16 @@
+import sys
+import asyncio
+
+# Corrige o loop de eventos global para o Python moderno do Render antes de qualquer import do Pyrogram
+if sys.version_info >= (3, 10):
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
 import os
 import socket
-import asyncio
 from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -9,7 +19,6 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 old_getaddrinfo = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **kw: [r for r in old_getaddrinfo(*a, **kw) if r[0] == socket.AF_INET]
 
-# Puxa estritamente das variáveis do Render
 API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 LINK_DESTINO = os.environ["LINK_DESTINO"]
@@ -23,10 +32,8 @@ app = Client(
     sleep_threshold=60
 )
 
-# Estado global do bot (começa desligado por segurança)
 bot_ligado = False
 
-# Servidor web leve para o UptimeRobot manter o Render acordado 24h
 async def handle_ping(request):
     status = "LIGADO e Operacional" if bot_ligado else "DESLIGADO (Aguardando Comando)"
     return web.Response(text=f"Bot TeraBox Manager - Status: {status}")
@@ -41,7 +48,6 @@ async def start_web_server():
     await site.start()
     print(f"🌐 Servidor web ativo na porta {port} para o UptimeRobot.")
 
-# Painel de controle por comandos
 @app.on_message(filters.user(MEU_ID) & filters.command(["start", "painel"]))
 async def painel_controle(client: Client, message: Message):
     status_atual = "🟢 LIGADO" if bot_ligado else "🔴 DESLIGADO"
@@ -92,7 +98,6 @@ async def cmd_desligar(client: Client, message: Message):
     bot_ligado = False
     await message.reply_text("🔴 **Bot DESLIGADO!** Envios pausados.")
 
-# Processa e envia a mídia SOMENTE se o bot estiver LIGADO
 @app.on_message(filters.user(MEU_ID) & (filters.video | filters.photo | filters.document))
 async def processar_midia_enviada(client: Client, message: Message):
     global bot_ligado
