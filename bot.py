@@ -48,13 +48,18 @@ def download_video(message):
     
     os.makedirs("downloads", exist_ok=True)
     
-    # Configuração do yt-dlp para máxima qualidade e formato MP4
+    # Configuração robusta do yt-dlp otimizada para servidores
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'merge_output_format': 'mp4',
+        'noplaylist': True,
+        'socket_timeout': 30,
+        'nocheckcertificate': True,
+        'geo_bypass': True,
     }
     
+    final_file = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
@@ -70,13 +75,20 @@ def download_video(message):
             bot.send_video(message.chat.id, video, supports_streaming=True)
             
         bot.delete_message(message.chat.id, msg.message_id)
-        
-        # Limpa o arquivo do servidor após o envio
-        if os.path.exists(final_file):
-            os.remove(final_file)
             
     except Exception as e:
-        bot.edit_message_text(f"❌ Erro ao processar o vídeo: {str(e)}", chat_id=message.chat.id, message_id=msg.message_id)
+        try:
+            bot.edit_message_text(f"❌ Erro ao processar o vídeo: {str(e)}", chat_id=message.chat.id, message_id=msg.message_id)
+        except:
+            bot.send_message(message.chat.id, f"❌ Erro ao processar o vídeo: {str(e)}")
+            
+    finally:
+        # Garante a limpeza do arquivo baixado independentemente de erro ou sucesso
+        if final_file and os.path.exists(final_file):
+            try:
+                os.remove(final_file)
+            except:
+                pass
 
 if __name__ == "__main__":
     print("Bot e servidor web iniciados com sucesso...")
