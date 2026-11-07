@@ -1,6 +1,28 @@
 import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import telebot
 import yt_dlp
+
+# --- Servidor Web Keep-Alive para o Render (Plano Gratuito) ---
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is active and running!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+def run_keep_alive_server():
+    port = int(os.getenv("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    server.serve_forever()
+
+# Inicia o servidor web em uma thread separada para manter a porta aberta
+threading.Thread(target=run_keep_alive_server, daemon=True).start()
+# -------------------------------------------------------------
 
 # Pega as variáveis de ambiente configuradas no Render
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -57,5 +79,5 @@ def download_video(message):
         bot.edit_message_text(f"❌ Erro ao processar o vídeo: {str(e)}", chat_id=message.chat.id, message_id=msg.message_id)
 
 if __name__ == "__main__":
-    print("Bot iniciado com sucesso...")
+    print("Bot e servidor web iniciados com sucesso...")
     bot.infinity_polling()
