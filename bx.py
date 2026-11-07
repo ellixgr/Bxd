@@ -25,22 +25,19 @@ try:
 except Exception as e:
     print(f"Erro ao conectar no MongoDB: {e}")
 
-# Armazena temporariamente os links de streaming para o proxy
 active_downloads = {}
 
 def verificar_acesso_web(user_ip):
     hoje = datetime.datetime.utcnow().strftime("%Y-%m-%d")
     
-    # 1. Verifica se tem assinatura VIP ativa
     sub = subs_col.find_one({"user_ip": user_ip})
     if sub:
         expires_at = sub.get("expires_at")
         if expires_at and expires_at > datetime.datetime.utcnow():
-            return "vip", 20 # VIP tem direito a 20 vídeos por dia
+            return "vip", 20
         else:
             subs_col.delete_one({"user_ip": user_ip})
 
-    # 2. Limite diário gratuito (1 vídeo por dia)
     user_data = users_col.find_one({"user_ip": user_ip})
     if not user_data or user_data.get("date") != hoje:
         users_col.update_one(
@@ -94,7 +91,6 @@ def criar_preferencia_mercado_pago(user_ip):
         print(f"Erro MP: {e}")
         return None
 
-# --- Template HTML com Botão de Download via Proxy ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -195,8 +191,9 @@ def process_video():
             except:
                 pass
 
+        # Configuração focada em pegar formato progressivo real com cabeçalhos corretos
         ydl_opts = {
-            'format': 'best[height<=720]/best',
+            'format': 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=mp4]/best',
             'noplaylist': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
@@ -207,6 +204,7 @@ def process_video():
             info = ydl.extract_info(url, download=False)
             
             stream_url = None
+            # Tenta pegar url direta válida que não seja m3u8
             if 'url' in info and '.m3u8' not in info['url']:
                 stream_url = info['url']
             else:
@@ -217,8 +215,8 @@ def process_video():
                 if not stream_url:
                     stream_url = info.get('url')
 
-            if not stream_url:
-                raise Exception("Não foi possível extrair o link de vídeo.")
+            if not stream_url or '.m3u8' in stream_url:
+                raise Exception("O link fornecido usa streaming protegido (HLS). Tente outro link compatível.")
 
         file_id = str(uuid.uuid4())
         active_downloads[file_id] = {
@@ -234,12 +232,13 @@ def process_video():
 
 def generate_proxy(stream_url, referer):
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': referer
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': referer,
+        'Accept': '*/*'
     }
     try:
         r = requests.get(stream_url, stream=True, headers=headers, timeout=30)
-        for chunk in r.iter_content(chunk_size=8192):
+        for chunk in r.iter_content(chunk_size=16384):
             if chunk:
                 yield chunk
     except Exception as e:
