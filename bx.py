@@ -207,13 +207,14 @@ def process_video():
             except:
                 pass
 
-        # Configuração robusta do yt-dlp para capturar a mídia principal de qualquer site suportado
+        # Configuração ultra-otimizada para servidores de 512MB de RAM (Evita SIGKILL)
         ydl_opts = {
-            'format': 'best[height<=720]/best',
+            'format': 'best[height<=480]/best',
             'outtmpl': final_file,
             'noplaylist': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
+            'concurrent_fragment_downloads': 1,
             'extractor_args': {'generic': {'impersonate': True}},
         }
         
