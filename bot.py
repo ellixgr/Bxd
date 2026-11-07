@@ -1,4 +1,5 @@
 import os
+import time
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import telebot
@@ -44,11 +45,50 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: message.from_user.id == OWNER_ID and message.text and message.text.startswith('http'))
 def download_video(message):
     url = message.text.strip()
-    msg = bot.reply_to(message, "⏳ Baixando o vídeo em alta qualidade...")
+    msg = bot.reply_to(message, "⏳ Iniciando conexão com o link...")
     
     os.makedirs("downloads", exist_ok=True)
     
-    # Configuração robusta do yt-dlp otimizada para servidores
+    last_update_time = [0]  # Usado para controlar o intervalo de atualização da mensagem
+
+    def yt_progress_hook(d):
+        if d['status'] == 'downloading':
+            ora = time.time()
+            # Atualiza a cada 3 segundos para evitar bloqueio (flood) da API do Telegram
+            if ora - last_update_time[0] < 3:
+                return
+            last_update_time[0] = ora
+
+            percent = d.get('_percent_str', '0.0%').strip()
+            speed = d.get('_speed_str', 'Desconhecida').strip()
+            eta = d.get('_eta_str', 'Desconhecido').strip()
+            
+            # Pega o tamanho baixado e o total se disponível
+            downloaded = d.get('downloaded_bytes', 0)
+            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+            
+            def human_readable(bytes_num):
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if bytes_num < 1024.0:
+                        return f"{bytes_num:.2f} {unit}"
+                    bytes_num /= 1024.0
+                return f"{bytes_num:.2f} TB"
+
+            baixado_mb = human_readable(downloaded)
+            total_mb = human_readable(total) if total > 0 else "Calculando..."
+
+            texto_progresso = (
+                f"📥 **BAIXANDO VÍDEO...**\n\n"
+                f"📊 **Progresso:** `{percent}`\n"
+                f"📦 **Baixado:** `{baixado_mb} de {total_mb}`\n"
+                f"⚡ **Velocidade:** `{speed}`\n"
+                f"⏱️ **Falta:** `{eta}`"
+            )
+            try:
+                bot.edit_message_text(texto_progresso, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            except Exception:
+                pass  - # Ignora se a mensagem não mudou o suficiente
+
     ydl_opts = {
         'format': 'bestvideo+bestaudio/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -57,11 +97,13 @@ def download_video(message):
         'socket_timeout': 30,
         'nocheckcertificate': True,
         'geo_bypass': True,
+        'progress_hooks': [yt_progress_hook],
     }
     
     final_file = None
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            bot.edit_message_text("🔍 Extraindo informações e gerando arquivo...", chat_id=message.chat.id, message_id=msg.message_id)
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             base, ext = os.path.splitext(filename)
@@ -69,7 +111,7 @@ def download_video(message):
             if not os.path.exists(final_file):
                 final_file = filename
 
-        bot.edit_message_text("⬆️ Enviando o vídeo...", chat_id=message.chat.id, message_id=msg.message_id)
+        bot.edit_message_text("⬆️ Download concluído! Enviando o vídeo para o chat...", chat_id=message.chat.id, message_id=msg.message_id)
         
         with open(final_file, 'rb') as video:
             bot.send_video(message.chat.id, video, supports_streaming=True)
@@ -78,12 +120,11 @@ def download_video(message):
             
     except Exception as e:
         try:
-            bot.edit_message_text(f"❌ Erro ao processar o vídeo: {str(e)}", chat_id=message.chat.id, message_id=msg.message_id)
+            bot.edit_message_text(f"❌ **Erro ao processar o vídeo:**\n`{str(e)}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         except:
             bot.send_message(message.chat.id, f"❌ Erro ao processar o vídeo: {str(e)}")
             
     finally:
-        # Garante a limpeza do arquivo baixado independentemente de erro ou sucesso
         if final_file and os.path.exists(final_file):
             try:
                 os.remove(final_file)
