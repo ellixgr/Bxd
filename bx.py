@@ -207,10 +207,10 @@ def process_video():
             except:
                 pass
 
+        # Configuração otimizada para poupar RAM no Render
         ydl_opts = {
-            'format': 'bestvideo+bestaudio/best',
+            'format': 'best[height<=720]/best',
             'outtmpl': final_file,
-            'merge_output_format': 'mp4',
             'noplaylist': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
