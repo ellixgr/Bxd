@@ -1,3 +1,2 @@
-pyrogram
-tgcrypto
-aiohttp
+pyTelegramBotAPI
+yt-dlp
