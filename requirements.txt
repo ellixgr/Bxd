@@ -1,4 +1,5 @@
-pyTelegramBotAPI
-yt-dlp
+flask
 pymongo
 requests
+yt-dlp
+gunicorn
