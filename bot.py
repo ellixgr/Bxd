@@ -17,11 +17,12 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 old_getaddrinfo = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **kw: [r for r in old_getaddrinfo(*a, **kw) if r[0] == socket.AF_INET]
 
-API_ID = int(os.environ["API_ID"])
-API_HASH = os.environ["API_HASH"]
-LINK_DESTINO = os.environ["LINK_DESTINO"]
-MEU_ID = int(os.environ["MEU_ID"])
-NOME_TOPICO_ORIGEM = os.environ.get("HASHTAG", "#vazados")
+# Dados fixos para garantir que funcione de primeira sem depender do painel do Render
+API_ID = 37157305
+API_HASH = "bc217a1d9e670ff5fb875a04e6667e39"
+LINK_DESTINO = "https://t.me/+ucAti-Hjh-c1Njcx"
+MEU_ID = 7711945457
+NOME_TOPICO_ORIGEM = "#vazados"
 
 app = Client(
     "minha_conta",
@@ -46,9 +47,21 @@ async def start_web_server():
     await site.start()
     print(f"🌐 Servidor web ativo na porta {port} para o UptimeRobot.")
 
-# Responde a comandos enviados por você mesmo (inclusive nas Mensagens Salvas / Me)
-@app.on_message(filters.me & filters.command(["start", "painel"]))
+@app.on_message(filters.me & (filters.command(["start", "painel", "ligar", "desligar"]) | filters.text))
 async def painel_controle(client: Client, message: Message):
+    global bot_ligado
+    
+    texto = message.text.lower() if message.text else ""
+    
+    if "ligar" in texto and "/ligar" in texto:
+        bot_ligado = True
+        await message.reply_text("🟢 **Bot LIGADO com sucesso!** Pronto para disparar mídias.")
+        return
+    elif "desligar" in texto and "/desligar" in texto:
+        bot_ligado = False
+        await message.reply_text("🔴 **Bot DESLIGADO!** Envios pausados.")
+        return
+
     status_atual = "🟢 LIGADO" if bot_ligado else "🔴 DESLIGADO"
     teclado = InlineKeyboardMarkup([
         [
@@ -74,7 +87,7 @@ async def callback_handler(client, callback_query):
         await callback_query.message.edit_text(
             "🟢 **Painel de Controle - TeraBox**\n\n"
             "Status atual: 🟢 LIGADO\n\n"
-            "Agora as mídias que você enviar nas Salvas serão disparadas para o grupo."
+            "Agora as mídias que você enviar serão disparadas para o grupo."
         )
     elif data == "desligar_bot":
         bot_ligado = False
@@ -85,19 +98,6 @@ async def callback_handler(client, callback_query):
             "Os envios estão pausados. Nenhuma mídia será repassada."
         )
 
-@app.on_message(filters.me & filters.command("ligar"))
-async def cmd_ligar(client: Client, message: Message):
-    global bot_ligado
-    bot_ligado = True
-    await message.reply_text("🟢 **Bot LIGADO!** Pronto para disparar mídias.")
-
-@app.on_message(filters.me & filters.command("desligar"))
-async def cmd_desligar(client: Client, message: Message):
-    global bot_ligado
-    bot_ligado = False
-    await message.reply_text("🔴 **Bot DESLIGADO!** Envios pausados.")
-
-# Processa e envia a mídia SOMENTE se o bot estiver LIGADO e enviado por você
 @app.on_message(filters.me & (filters.video | filters.photo | filters.document))
 async def processar_midia_enviada(client: Client, message: Message):
     global bot_ligado
