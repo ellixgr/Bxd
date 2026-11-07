@@ -1,4 +1,4 @@
 pyTelegramBotAPI
-yt-dlp --upgrade
+yt-dlp
 pymongo
 requests
