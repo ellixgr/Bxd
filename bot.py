@@ -45,6 +45,14 @@ def download_video(message):
     
     last_update_time = [0]
 
+    def human_readable(bytes_num):
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if bytes_num < 1024.0:
+                return f"{bytes_num:.2f} {unit}"
+            bytes_num /= 1024.0
+        return f"{bytes_num:.2f} TB"
+
+    # Hook para o progresso do DOWNLOAD
     def yt_progress_hook(d):
         if d['status'] == 'downloading':
             ora = time.time()
@@ -58,13 +66,6 @@ def download_video(message):
             
             downloaded = d.get('downloaded_bytes', 0)
             total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
-            
-            def human_readable(bytes_num):
-                for unit in ['B', 'KB', 'MB', 'GB']:
-                    if bytes_num < 1024.0:
-                        return f"{bytes_num:.2f} {unit}"
-                    bytes_num /= 1024.0
-                return f"{bytes_num:.2f} TB"
 
             baixado_mb = human_readable(downloaded)
             total_mb = human_readable(total) if total > 0 else "Desconhecido"
@@ -107,10 +108,57 @@ def download_video(message):
             if not os.path.exists(final_file):
                 final_file = filename
 
-        bot.edit_message_text("⬆️ Enviando o vídeo para o chat...", chat_id=message.chat.id, message_id=msg.message_id)
-        
-        with open(final_file, 'rb') as video:
-            bot.send_video(message.chat.id, video, supports_streaming=True)
+        file_size = os.path.getsize(final_file)
+        uploaded_bytes = [0]
+        upload_start_time = [time.time()]
+        last_upload_update = [0]
+
+        # Classe customizada para monitorar o progresso do UPLOAD (enviando arquivo em pedaços)
+        class ProgressFileWrapper:
+            def __init__(self, filename):
+                self._file = open(filename, 'rb')
+
+            def read(self, size):
+                data = self._file.read(size)
+                if data:
+                    uploaded_bytes[0] += len(data)
+                    now = time.time()
+                    
+                    # Atualiza a mensagem a cada 2 segundos no chat
+                    if now - last_upload_update[0] >= 2:
+                        last_upload_update[0] = now
+                        elapsed = now - upload_start_time[0]
+                        speed = uploaded_bytes[0] / elapsed if elapsed > 0 else 0
+                        
+                        percent = (uploaded_bytes[0] / file_size) * 100 if file_size > 0 else 0
+                        
+                        up_baixado = human_readable(uploaded_bytes[0])
+                        up_total = human_readable(file_size)
+                        up_speed = human_readable(speed) + "/s"
+                        
+                        texto_envio = (
+                            f"⬆️ **ENVIANDO VÍDEO (DOCUMENTO)...**\n\n"
+                            f"📊 **Progresso:** `{percent:.1f}%`\n"
+                            f"📦 **Enviado:** `{up_baixado} / {up_total}`\n"
+                            f"⚡ **Velocidade:** `{up_speed}`"
+                        )
+                        try:
+                            bot.edit_message_text(texto_envio, chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+                        except:
+                            pass
+                return data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self._file.close()
+
+        bot.edit_message_text("⬆️ Iniciando envio do arquivo...", chat_id=message.chat.id, message_id=msg.message_id)
+
+        # Envia como documento para aceitar arquivos grandes e exibe o progresso de upload
+        with ProgressFileWrapper(final_file) as wrapped_file:
+            bot.send_document(message.chat.id, wrapped_file, visible_file_name=os.path.basename(final_file))
             
         bot.delete_message(message.chat.id, msg.message_id)
             
