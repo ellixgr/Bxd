@@ -87,7 +87,6 @@ def download_video(message):
             except:
                 pass
 
-    # Trava configurada para 720p para proteger a RAM do servidor gratuito do Render
     ydl_opts = {
         'format': 'bv*[height<=720]+ba/b[height<=720] / best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -114,12 +113,12 @@ def download_video(message):
         upload_start_time = [time.time()]
         last_upload_update = [0]
 
-        # Classe customizada para monitorar o progresso do UPLOAD
+        # Classe corrigida para o UPLOAD com suporte correto ao argumento size do read()
         class ProgressFileWrapper:
-            def __init__(self, filename):
-                self._file = open(filename, 'rb')
+            def __init__(self, filepath):
+                self._file = open(filepath, 'rb')
 
-            def read(self, size):
+            def read(self, size=-1):
                 data = self._file.read(size)
                 if data:
                     uploaded_bytes[0] += len(data)
