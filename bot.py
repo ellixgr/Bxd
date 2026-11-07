@@ -17,7 +17,7 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 old_getaddrinfo = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **kw: [r for r in old_getaddrinfo(*a, **kw) if r[0] == socket.AF_INET]
 
-# Dados fixos para garantir que funcione de primeira sem depender do painel do Render
+# Dados fixos integrados
 API_ID = 37157305
 API_HASH = "bc217a1d9e670ff5fb875a04e6667e39"
 LINK_DESTINO = "https://t.me/+ucAti-Hjh-c1Njcx"
@@ -47,21 +47,21 @@ async def start_web_server():
     await site.start()
     print(f"🌐 Servidor web ativo na porta {port} para o UptimeRobot.")
 
-@app.on_message(filters.me & (filters.command(["start", "painel", "ligar", "desligar"]) | filters.text))
+@app.on_message(filters.user(MEU_ID) & filters.private)
 async def painel_controle(client: Client, message: Message):
     global bot_ligado
     
     texto = message.text.lower() if message.text else ""
     
-    if "ligar" in texto and "/ligar" in texto:
+    if "/ligar" in texto or texto == "ligar":
         bot_ligado = True
         await message.reply_text("🟢 **Bot LIGADO com sucesso!** Pronto para disparar mídias.")
         return
-    elif "desligar" in texto and "/desligar" in texto:
+    elif "/desligar" in texto or texto == "desligar":
         bot_ligado = False
         await message.reply_text("🔴 **Bot DESLIGADO!** Envios pausados.")
         return
-
+    
     status_atual = "🟢 LIGADO" if bot_ligado else "🔴 DESLIGADO"
     teclado = InlineKeyboardMarkup([
         [
@@ -98,7 +98,7 @@ async def callback_handler(client, callback_query):
             "Os envios estão pausados. Nenhuma mídia será repassada."
         )
 
-@app.on_message(filters.me & (filters.video | filters.photo | filters.document))
+@app.on_message(filters.user(MEU_ID) & filters.private & (filters.video | filters.photo | filters.document))
 async def processar_midia_enviada(client: Client, message: Message):
     global bot_ligado
     if not bot_ligado:
