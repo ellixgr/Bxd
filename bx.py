@@ -132,7 +132,7 @@ HTML_TEMPLATE = """
         {% if direct_url %}
             <div class="success">
                 <p>Mídia extraída com sucesso!</p>
-                <a href="{{ direct_url }}" class="download-btn" target="_blank" download>Baixar Direto no Dispositivo</a>
+                <a href="{{ direct_url }}" class="download-btn" target="_blank" download="video.mp4">Baixar Direto no Dispositivo</a>
                 <br><br>
                 <a href="/" style="color: #38bdf8; text-decoration: none;">Extrair outro</a>
             </div>
@@ -193,9 +193,9 @@ def process_video():
             except:
                 pass
 
-        # Extração leve apenas de metadados e URL direta de streaming (Consumo de RAM zero)
+        # Força a busca por links em MP4 progressivo direto
         ydl_opts = {
-            'format': 'best[height<=720]/best',
+            'format': 'best[ext=mp4]/best',
             'noplaylist': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
@@ -204,17 +204,21 @@ def process_video():
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            if 'url' in info:
+            
+            direct_url = None
+            if 'url' in info and '.m3u8' not in info['url']:
                 direct_url = info['url']
-            elif 'requested_formats' in info:
-                direct_url = info['requested_formats'][0]['url']
             else:
-                # Tenta pegar do entries se for playlist/objeto composto
-                formats = info.get('formats', [])
-                if formats:
-                    direct_url = formats[-1]['url']
-                else:
-                    raise Exception("Formato direto não encontrado.")
+                for f in info.get('formats', []):
+                    if f.get('ext') == 'mp4' and f.get('url') and '.m3u8' not in f.get('url'):
+                        direct_url = f.get('url')
+                        break
+                
+                if not direct_url:
+                    direct_url = info.get('url')
+
+            if not direct_url or '.m3u8' in direct_url:
+                raise Exception("Formato MP4 direto indisponível para este link específico.")
 
         registrar_uso_web(user_ip)
         return render_template_string(HTML_TEMPLATE, status_texto="Pronto", direct_url=direct_url)
