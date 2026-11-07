@@ -1,7 +1,6 @@
 import sys
 import asyncio
 
-# Corrige o loop de eventos global para o Python moderno do Render antes de qualquer import do Pyrogram
 if sys.version_info >= (3, 10):
     try:
         loop = asyncio.get_running_loop()
@@ -15,7 +14,6 @@ from aiohttp import web
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-# Força o Python a usar IPv4 para evitar timeout
 old_getaddrinfo = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **kw: [r for r in old_getaddrinfo(*a, **kw) if r[0] == socket.AF_INET]
 
@@ -48,7 +46,8 @@ async def start_web_server():
     await site.start()
     print(f"🌐 Servidor web ativo na porta {port} para o UptimeRobot.")
 
-@app.on_message(filters.user(MEU_ID) & filters.command(["start", "painel"]))
+# Responde a comandos enviados por você mesmo (inclusive nas Mensagens Salvas / Me)
+@app.on_message(filters.me & filters.command(["start", "painel"]))
 async def painel_controle(client: Client, message: Message):
     status_atual = "🟢 LIGADO" if bot_ligado else "🔴 DESLIGADO"
     teclado = InlineKeyboardMarkup([
@@ -75,7 +74,7 @@ async def callback_handler(client, callback_query):
         await callback_query.message.edit_text(
             "🟢 **Painel de Controle - TeraBox**\n\n"
             "Status atual: 🟢 LIGADO\n\n"
-            "Agora as mídias que você enviar serão disparadas para o grupo."
+            "Agora as mídias que você enviar nas Salvas serão disparadas para o grupo."
         )
     elif data == "desligar_bot":
         bot_ligado = False
@@ -86,19 +85,20 @@ async def callback_handler(client, callback_query):
             "Os envios estão pausados. Nenhuma mídia será repassada."
         )
 
-@app.on_message(filters.user(MEU_ID) & filters.command("ligar"))
+@app.on_message(filters.me & filters.command("ligar"))
 async def cmd_ligar(client: Client, message: Message):
     global bot_ligado
     bot_ligado = True
     await message.reply_text("🟢 **Bot LIGADO!** Pronto para disparar mídias.")
 
-@app.on_message(filters.user(MEU_ID) & filters.command("desligar"))
+@app.on_message(filters.me & filters.command("desligar"))
 async def cmd_desligar(client: Client, message: Message):
     global bot_ligado
     bot_ligado = False
     await message.reply_text("🔴 **Bot DESLIGADO!** Envios pausados.")
 
-@app.on_message(filters.user(MEU_ID) & (filters.video | filters.photo | filters.document))
+# Processa e envia a mídia SOMENTE se o bot estiver LIGADO e enviado por você
+@app.on_message(filters.me & (filters.video | filters.photo | filters.document))
 async def processar_midia_enviada(client: Client, message: Message):
     global bot_ligado
     if not bot_ligado:
