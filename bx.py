@@ -18,7 +18,7 @@ app = Flask(__name__)
 # --- Conexão MongoDB ---
 try:
     mongo_client = MongoClient(MONGO_URI)
-    db = mongo_client["bot_baixador_videos_db"]
+    db = mongo_client["baixador_videos_db"]
     users_col = db["users_limits"]
     subs_col = db["subscriptions"]
     print("Conectado ao MongoDB com sucesso!")
@@ -101,24 +101,24 @@ def criar_preferencia_mercado_pago(user_ip):
         print(f"Erro MP: {e}")
         return None
 
-# --- Template HTML da Aplicação Web ---
+# --- Template HTML Limpo e Direto ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Baixador de Vídeos Profissional</title>
+    <title>Baixador de Vídeos</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         .container { background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 500px; text-align: center; }
-        h1 { color: #38bdf8; font-size: 24px; margin-bottom: 10px; }
+        h1 { color: #38bdf8; font-size: 22px; margin-bottom: 10px; }
         p { color: #94a3b8; font-size: 14px; margin-bottom: 20px; }
         input[type="text"] { width: 100%; padding: 12px; border: 1px solid #334155; background: #0f172a; color: #fff; border-radius: 8px; margin-bottom: 15px; font-size: 14px; box-sizing: border-box; }
         button { background: #0284c7; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-size: 16px; cursor: pointer; width: 100%; font-weight: bold; transition: background 0.2s; }
         button:hover { background: #0369a1; }
         .vip-box { margin-top: 25px; background: #334155; padding: 15px; border-radius: 8px; text-align: left; }
-        .vip-box h3 { color: #fbbf24; margin: 0 0 10px 0; font-size: 16px; }
+        .vip-box h3 { color: #fbbf24; margin: 0 0 10px 0; font-size: 15px; }
         .btn-vip { background: #d97706; margin-top: 10px; }
         .btn-vip:hover { background: #b45309; }
         .error { background: #7f1d1d; color: #fca5a5; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
@@ -132,8 +132,8 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Baixador Universal</h1>
-        <p>Baixe vídeos do TikTok, Instagram, YouTube e mais sem limites de tamanho!</p>
+        <h1>Baixador de Vídeos</h1>
+        <p>Cole o link abaixo para baixar seu vídeo instantaneamente.</p>
         
         {% if error %}
             <div class="error">{{ error }}</div>
@@ -141,26 +141,26 @@ HTML_TEMPLATE = """
 
         {% if download_file_id %}
             <div class="success">
-                <p>🎉 Vídeo processado com sucesso!</p>
-                <a href="/download-file/{{ download_file_id }}" class="download-btn">📥 Baixar Vídeo Agora</a>
+                <p>Vídeo pronto para download!</p>
+                <a href="/download-file/{{ download_file_id }}" class="download-btn">Baixar Arquivo .MP4</a>
                 <br><br>
-                <a href="/" style="color: #38bdf8; text-decoration: none;">Baixar outro vídeo</a>
+                <a href="/" style="color: #38bdf8; text-decoration: none;">Baixar outro</a>
             </div>
         {% else %}
             <form method="POST" action="/process">
-                <input type="text" name="url" placeholder="Cole o link do vídeo aqui..." required>
-                <button type="submit">🔍 Processar Vídeo</button>
+                <input type="text" name="url" placeholder="Cole o link (YouTube, Xvideos, Insta, etc)..." required>
+                <button type="submit">Baixar Vídeo</button>
             </form>
         {% endif %}
 
         <div class="vip-box">
-            <h3>💎 Área VIP & Limites</h3>
-            <p>Status atual: <b>{{ status_texto }}</b></p>
+            <h3>Área VIP</h3>
+            <p style="margin: 5px 0;"><b>{{ status_texto }}</b></p>
             <form method="POST" action="/activate-vip-code" style="margin-top: 10px;">
                 <input type="text" name="vip_code" placeholder="Código VIP" class="code-input">
                 <button type="submit" class="btn-code">Ativar</button>
             </form>
-            <a href="/pay-mp"><button class="btn-vip">💳 Assinar VIP (R$ 10,00 / Semana)</button></a>
+            <a href="/pay-mp"><button class="btn-vip">Assinar VIP (R$ 10,00)</button></a>
         </div>
     </div>
 </body>
@@ -173,11 +173,11 @@ def index():
     status, left = verificar_acesso_web(user_ip)
     
     if status == "vip":
-        status_texto = f"VIP Ativo (Restam {left} downloads hoje)"
+        status_texto = f"VIP Ativo (Restam {left} hoje)"
     elif status == "free":
-        status_texto = f"Plano Gratuito ({left} download disponível hoje)"
+        status_texto = f"Plano Gratuito ({left} restante hoje)"
     else:
-        status_texto = "Limite diário esgotado! Faça VIP."
+        status_texto = "Limite diário esgotado."
 
     return render_template_string(HTML_TEMPLATE, status_texto=status_texto, error=request.args.get('error'))
 
@@ -187,7 +187,7 @@ def process_video():
     status, _ = verificar_acesso_web(user_ip)
     
     if status == "limit_exceeded":
-        return redirect(url_for('index', error="Limite diário esgotado! Adquira o VIP para continuar."))
+        return redirect(url_for('index', error="Limite diário esgotado! Ative um código VIP ou assine."))
 
     url = request.form.get("url", "").strip()
     if not url:
@@ -198,7 +198,7 @@ def process_video():
     final_file = os.path.join("downloads", f"{file_id}.mp4")
 
     try:
-        # Bypass TikTok se necessário
+        # Bypass específico para TikTok caso necessário
         if "tiktok.com" in url:
             try:
                 res = requests.post("https://www.tikwm.com/api/", data={"url": url}, timeout=10).json()
@@ -207,13 +207,14 @@ def process_video():
             except:
                 pass
 
-        # Configuração otimizada para poupar RAM no Render
+        # Configuração robusta do yt-dlp para capturar a mídia principal de qualquer site suportado
         ydl_opts = {
             'format': 'best[height<=720]/best',
             'outtmpl': final_file,
             'noplaylist': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
+            'extractor_args': {'generic': {'impersonate': True}},
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -222,25 +223,27 @@ def process_video():
         if not os.path.exists(final_file) or os.path.getsize(final_file) == 0:
             for f in os.listdir("downloads"):
                 if file_id in f:
-                    final_file = os.path.join("downloads", f)
-                    break
+                    matched_path = os.path.join("downloads", f)
+                    if os.path.getsize(matched_path) > 0:
+                        final_file = matched_path
+                        break
 
-        if not os.path.exists(final_file):
-            raise Exception("Falha ao salvar o arquivo do vídeo.")
+        if not os.path.exists(final_file) or os.path.getsize(final_file) == 0:
+            raise Exception("Não foi possível extrair a mídia principal deste link.")
 
         registrar_uso_web(user_ip)
         active_downloads[file_id] = final_file
 
-        return render_template_string(HTML_TEMPLATE, status_texto="Pronto para download", download_file_id=file_id)
+        return render_template_string(HTML_TEMPLATE, status_texto="Pronto", download_file_id=file_id)
 
     except Exception as e:
-        return redirect(url_for('index', error=f"Erro ao baixar: {str(e)}"))
+        return redirect(url_for('index', error=f"Erro ao processar link: {str(e)}"))
 
 @app.route("/download-file/<file_id>")
 def download_file(file_id):
     path = active_downloads.get(file_id)
     if path and os.path.exists(path):
-        return send_file(path, as_attachment=True, download_name="video_baixado.mp4")
+        return send_file(path, as_attachment=True, download_name="video.mp4")
     return "Arquivo expirado ou inválido.", 404
 
 @app.route("/pay-mp")
@@ -249,7 +252,7 @@ def pay_mp():
     init_point = criar_preferencia_mercado_pago(user_ip)
     if init_point:
         return redirect(init_point)
-    return redirect(url_for('index', error="Erro ao gerar pagamento no Mercado Pago."))
+    return redirect(url_for('index', error="Erro ao gerar pagamento."))
 
 @app.route("/vip-success")
 def vip_success():
@@ -277,7 +280,7 @@ def activate_vip_code():
         )
         return redirect(url_for('index'))
     else:
-        return redirect(url_for('index', error="Código VIP inválido ou não configurado!"))
+        return redirect(url_for('index', error="Código VIP inválido!"))
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
