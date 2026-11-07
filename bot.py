@@ -168,11 +168,14 @@ def handle_link_input(message):
     url = message.text.strip()
     msg = bot.reply_to(message, "🔍 Analisando o link e verificando o tamanho do vídeo...")
     
+    # Opções com cabeçalho de navegador para evitar bloqueio do TikTok
     ydl_meta_opts = {
         'noplaylist': True,
         'socket_timeout': 30,
         'nocheckcertificate': True,
         'geo_bypass': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'referer': 'https://www.tiktok.com/',
     }
     
     try:
@@ -300,6 +303,8 @@ def executar_download_e_envio(message, url, resolution_limit=None):
         'socket_timeout': 30,
         'nocheckcertificate': True,
         'geo_bypass': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'referer': 'https://www.tiktok.com/',
         'progress_hooks': [yt_progress_hook],
     }
     
