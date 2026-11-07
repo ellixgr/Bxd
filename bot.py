@@ -22,7 +22,7 @@ API_ID = 37157305
 API_HASH = "bc217a1d9e670ff5fb875a04e6667e39"
 LINK_DESTINO = "https://t.me/+ucAti-Hjh-c1Njcx"
 MEU_ID = 7711945457
-NOME_TOPICO_ORIGEM = "#vazados"
+DEFAULT_TAG = "#vazados"
 
 app = Client(
     "minha_conta",
@@ -55,7 +55,7 @@ async def painel_controle(client: Client, message: Message):
     
     if "/ligar" in texto or texto == "ligar":
         bot_ligado = True
-        await message.reply_text("🟢 **Bot LIGADO com sucesso!** Pronto para disparar mídias.")
+        await message.reply_text("🟢 **Bot LIGADO!** As mídias enviadas vão puxar o nome/legenda da pasta automaticamente.")
         return
     elif "/desligar" in texto or texto == "desligar":
         bot_ligado = False
@@ -72,7 +72,7 @@ async def painel_controle(client: Client, message: Message):
     await message.reply_text(
         f"🤖 **Painel de Controle - TeraBox (Render)**\n\n"
         f"Status atual: {status_atual}\n\n"
-        f"Use os botões abaixo para controlar quando o bot pode enviar mídias para o grupo.",
+        f"Envie as mídias com o nome da pasta na legenda para disparar.",
         reply_markup=teclado
     )
 
@@ -87,7 +87,7 @@ async def callback_handler(client, callback_query):
         await callback_query.message.edit_text(
             "🟢 **Painel de Controle - TeraBox**\n\n"
             "Status atual: 🟢 LIGADO\n\n"
-            "Agora as mídias que você enviar serão disparadas para o grupo."
+            "Modo automático ativado: o nome que você mandar na legenda da mídia será usado no envio."
         )
     elif data == "desligar_bot":
         bot_ligado = False
@@ -95,20 +95,23 @@ async def callback_handler(client, callback_query):
         await callback_query.message.edit_text(
             "🔴 **Painel de Controle - TeraBox**\n\n"
             "Status atual: 🔴 DESLIGADO\n\n"
-            "Os envios estão pausados. Nenhuma mídia será repassada."
+            "Os envios estão pausados."
         )
 
+# Captura a mídia e usa o texto/legenda enviada (nome da pasta) como base para o destino
 @app.on_message(filters.user(MEU_ID) & filters.private & (filters.video | filters.photo | filters.document))
 async def processar_midia_enviada(client: Client, message: Message):
     global bot_ligado
     if not bot_ligado:
         return
 
-    legenda_original = message.caption or ""
-    if legenda_original:
-        nova_legenda = f"{legenda_original}\n\n{NOME_TOPICO_ORIGEM}"
+    # Pega o texto que veio com a mídia (o nome da pasta/legenda)
+    nome_pasta = message.caption or message.text or ""
+    
+    if nome_pasta:
+        nova_legenda = f"{nome_pasta}\n\n{DEFAULT_TAG}"
     else:
-        nova_legenda = NOME_TOPICO_ORIGEM
+        nova_legenda = DEFAULT_TAG
 
     try:
         if message.video:
@@ -118,7 +121,7 @@ async def processar_midia_enviada(client: Client, message: Message):
         elif message.document:
             await client.send_document(chat_id=LINK_DESTINO, document=message.document.file_id, caption=nova_legenda)
             
-        print(f"⚡ Mídia repassada com sucesso com a legenda: {nova_legenda}")
+        print(f"⚡ Mídia repassada com o nome da pasta: {nova_legenda}")
     except Exception as e:
         print(f"⚠️ Erro ao enviar mídia: {e}")
 
