@@ -133,7 +133,6 @@ def resolver_link_tiktok(url):
         api_url = "https://www.tikwm.com/api/"
         res = requests.post(api_url, data={"url": url}, timeout=10).json()
         if res.get("code") == 0:
-            # Retorna o link direto do vídeo sem marca d'água provido pela API externa
             return res["data"]["play"]
     except Exception as e:
         print(f"Erro no bypass do TikTok: {e}")
@@ -179,57 +178,54 @@ def handle_link_input(message):
     raw_url = message.text.strip()
     msg = bot.reply_to(message, "🔍 Analisando o link e verificando o tamanho do vídeo...")
     
-    # Aplica o bypass se for TikTok
     url = resolver_link_tiktok(raw_url)
     
-    ydl_meta_opts = {
-        'noplaylist': True,
-        'socket_timeout': 30,
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-    }
-    
-    try:
-        with yt_dlp.YoutubeDL(ydl_meta_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            filesize = info.get('filesize') or info.get('filesize_approx') or 0
-            
-            if filesize == 0 and 'formats' in info:
-                for f in info['formats']:
-                    if f.get('filesize'):
-                        filesize = max(filesize, f.get('filesize'))
-                    elif f.get('filesize_approx'):
-                        filesize = max(filesize, f.get('filesize_approx'))
-
-        LIMITE_MEGABYTES = 50 * 1024 * 1024
-
-        if filesize > 0 and filesize > LIMITE_MEGABYTES:
-            user_pending_links[message.chat.id] = url
-            tamanho_formatado = human_readable(filesize)
-            
-            markup = InlineKeyboardMarkup()
-            markup.row(
-                InlineKeyboardButton("📱 Baixar em 480p (Leve)", callback_data="dl_480"),
-                InlineKeyboardButton("💻 Baixar em 720p (Padrão)", callback_data="dl_720")
-            )
-            
-            texto_aviso = (
-                f"⚠️ **VÍDEO PESADO DETECTADO!**\n\n"
-                f"📦 **Tamanho estimado:** `{tamanho_formatado}`\n"
-                f"🚫 O arquivo ultrapassa o limite direto de 50MB da API do Telegram.\n\n"
-                f"👇 **Escolha uma resolução abaixo para comprimir e baixar com segurança:**"
-            )
-            bot.edit_message_text(texto_aviso, chat_id=message.chat.id, message_id=msg.message_id, reply_markup=markup, parse_mode="Markdown")
-        else:
-            bot.delete_message(message.chat.id, msg.message_id)
-            registrar_uso(user_id)
-            executar_download_e_envio(message, url, resolution_limit=None)
-
-    except Exception as e:
+    # Se for TikTok direto da API externa, pula o check pesado e vai pro abraço
+    if "tiktok.com" not in raw_url.lower() and "v1.tiktok" not in url:
+        ydl_meta_opts = {
+            'noplaylist': True,
+            'socket_timeout': 30,
+            'nocheckcertificate': True,
+            'geo_bypass': True,
+        }
         try:
-            bot.edit_message_text(f"❌ **Erro ao processar o vídeo:**\n`{str(e)}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
-        except:
-            bot.send_message(message.chat.id, f"❌ Erro ao processar o vídeo: {str(e)}")
+            with yt_dlp.YoutubeDL(ydl_meta_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                filesize = info.get('filesize') or info.get('filesize_approx') or 0
+                
+                if filesize == 0 and 'formats' in info:
+                    for f in info['formats']:
+                        if f.get('filesize'):
+                            filesize = max(filesize, f.get('filesize'))
+                        elif f.get('filesize_approx'):
+                            filesize = max(filesize, f.get('filesize_approx'))
+
+            LIMITE_MEGABYTES = 50 * 1024 * 1024
+
+            if filesize > 0 and filesize > LIMITE_MEGABYTES:
+                user_pending_links[message.chat.id] = url
+                tamanho_formatado = human_readable(filesize)
+                
+                markup = InlineKeyboardMarkup()
+                markup.row(
+                    InlineKeyboardButton("📱 Baixar em 480p (Leve)", callback_data="dl_480"),
+                    InlineKeyboardButton("💻 Baixar em 720p (Padrão)", callback_data="dl_720")
+                )
+                
+                texto_aviso = (
+                    f"⚠️ **VÍDEO PESADO DETECTADO!**\n\n"
+                    f"📦 **Tamanho estimado:** `{tamanho_formatado}`\n"
+                    f"🚫 O arquivo ultrapassa o limite direto de 50MB da API do Telegram.\n\n"
+                    f"👇 **Escolha uma resolução abaixo para comprimir e baixar com segurança:**"
+                )
+                bot.edit_message_text(texto_aviso, chat_id=message.chat.id, message_id=msg.message_id, reply_markup=markup, parse_mode="Markdown")
+                return
+        except Exception as e:
+            pass
+
+    bot.delete_message(message.chat.id, msg.message_id)
+    registrar_uso(user_id)
+    executar_download_e_envio(message, url, resolution_limit=None)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dl_'))
 def callback_resolution(call):
@@ -265,116 +261,63 @@ def executar_download_e_envio(message, url, resolution_limit=None):
         msg_id = message.message_id
 
     os.makedirs("downloads", exist_ok=True)
-    last_update_time = [0]
-
-    def yt_progress_hook(d):
-        if d['status'] == 'downloading':
-            ora = time.time()
-            if ora - last_update_time[0] < 2:
-                return
-            last_update_time[0] = ora
-
-            percent = d.get('_percent_str', 'Calculando...').strip()
-            speed = d.get('_speed_str', 'Calculando...').strip()
-            eta = d.get('_eta_str', 'Calculando...').strip()
-            
-            downloaded = d.get('downloaded_bytes', 0)
-            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
-
-            baixado_mb = human_readable(downloaded)
-            total_mb = human_readable(total) if total > 0 else "Desconhecido"
-
-            texto_progresso = (
-                f"📥 **BAIXANDO VÍDEO...**\n\n"
-                f"📊 **Progresso:** `{percent}`\n"
-                f"📦 **Baixado:** `{baixado_mb} / {total_mb}`\n"
-                f"⚡ **Velocidade:** `{speed}`\n"
-                f"⏱️ **Tempo Restante:** `{eta}`"
-            )
-            try:
-                bot.edit_message_text(texto_progresso, chat_id=message.chat.id, message_id=msg_id, parse_mode="Markdown")
-            except Exception:
-                pass
-        elif d['status'] == 'finished':
-            try:
-                bot.edit_message_text("⚙️ Download finalizado! Processando arquivo...", chat_id=message.chat.id, message_id=msg_id)
-            except:
-                pass
-
-    if resolution_limit:
-        format_string = f'bv*[height<={resolution_limit}]+ba/b[height<={resolution_limit}] / best'
-    else:
-        format_string = 'bestvideo+bestaudio/best'
-
-    ydl_opts = {
-        'format': format_string,
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
-        'merge_output_format': 'mp4',
-        'noplaylist': True,
-        'socket_timeout': 30,
-        'nocheckcertificate': True,
-        'geo_bypass': True,
-        'progress_hooks': [yt_progress_hook],
-    }
     
-    final_file = None
+    # Nome de arquivo totalmente seguro contra erros de tamanho (Errno 36)
+    final_file = os.path.join("downloads", f"vid_{int(time.time())}.mp4")
+
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            base, ext = os.path.splitext(filename)
-            final_file = base + ".mp4"
-            if not os.path.exists(final_file):
-                final_file = filename
+        # Se for link direto do TikTok limpo, baixa direto via requests sem dor de cabeça
+        if "tiktok" in url or "v1.tiktok" in url or "tiktokcdn" in url:
+            bot.edit_message_text("📥 Baixando vídeo do TikTok sem marca d'água...", chat_id=message.chat.id, message_id=msg_id)
+            r = requests.get(url, stream=True, timeout=30)
+            if r.status_code == 200:
+                with open(final_file, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=1024):
+                        if chunk:
+                            f.write(chunk)
+            else:
+                raise Exception(f"Erro HTTP ao baixar do TikTok: {r.status_code}")
+        else:
+            # Demais plataformas usam o yt-dlp de forma segura
+            last_update_time = [0]
+            def yt_progress_hook(d):
+                if d['status'] == 'downloading':
+                    ora = time.time()
+                    if ora - last_update_time[0] < 2:
+                        return
+                    last_update_time[0] = ora
+                    percent = d.get('_percent_str', 'Calculando...').strip()
+                    speed = d.get('_speed_str', 'Calculando...').strip()
+                    try:
+                        bot.edit_message_text(f"📥 **BAIXANDO...**\nProgresso: `{percent}`\nVelocidade: `{speed}`", chat_id=message.chat.id, message_id=msg_id, parse_mode="Markdown")
+                    except:
+                        pass
 
-        file_size = os.path.getsize(final_file)
-        uploaded_bytes = [0]
-        upload_start_time = [time.time()]
-        last_upload_update = [0]
+            if resolution_limit:
+                format_string = f'bv*[height<={resolution_limit}]+ba/b[height<={resolution_limit}] / best'
+            else:
+                format_string = 'bestvideo+bestaudio/best'
 
-        class ProgressFileWrapper:
-            def __init__(self, filepath):
-                self._file = open(filepath, 'rb')
+            ydl_opts = {
+                'format': format_string,
+                'outtmpl': final_file,
+                'merge_output_format': 'mp4',
+                'noplaylist': True,
+                'socket_timeout': 30,
+                'nocheckcertificate': True,
+                'geo_bypass': True,
+                'progress_hooks': [yt_progress_hook],
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
 
-            def read(self, size=-1):
-                data = self._file.read(size)
-                if data:
-                    uploaded_bytes[0] += len(data)
-                    now = time.time()
-                    
-                    if now - last_upload_update[0] >= 2:
-                        last_upload_update[0] = now
-                        elapsed = now - upload_start_time[0]
-                        speed = uploaded_bytes[0] / elapsed if elapsed > 0 else 0
-                        
-                        percent = (uploaded_bytes[0] / file_size) * 100 if file_size > 0 else 0
-                        
-                        up_baixado = human_readable(uploaded_bytes[0])
-                        up_total = human_readable(file_size)
-                        up_speed = human_readable(speed) + "/s"
-                        
-                        texto_envio = (
-                            f"⬆️ **ENVIANDO VÍDEO...**\n\n"
-                            f"📊 **Progresso:** `{percent:.1f}%`\n"
-                            f"📦 **Enviado:** `{up_baixado} / {up_total}`\n"
-                            f"⚡ **Velocidade:** `{up_speed}`"
-                        )
-                        try:
-                            bot.edit_message_text(texto_envio, chat_id=message.chat.id, message_id=msg_id, parse_mode="Markdown")
-                        except:
-                            pass
-                return data
+        if not os.path.exists(final_file) or os.path.getsize(final_file) == 0:
+            raise Exception("O arquivo baixado está vazio ou corrompido.")
 
-            def __enter__(self):
-                return self
+        bot.edit_message_text("⬆️ Enviando vídeo para o Telegram...", chat_id=message.chat.id, message_id=msg_id)
 
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                self._file.close()
-
-        bot.edit_message_text("⬆️ Iniciando envio do arquivo...", chat_id=message.chat.id, message_id=msg_id)
-
-        with ProgressFileWrapper(final_file) as wrapped_file:
-            bot.send_document(message.chat.id, wrapped_file, visible_file_name=os.path.basename(final_file))
+        with open(final_file, 'rb') as video_file:
+            bot.send_document(message.chat.id, video_file, visible_file_name="video_baixado.mp4")
             
         bot.delete_message(message.chat.id, msg_id)
             
@@ -385,7 +328,7 @@ def executar_download_e_envio(message, url, resolution_limit=None):
             bot.send_message(message.chat.id, f"❌ Erro ao processar o vídeo: {str(e)}")
             
     finally:
-        if final_file and os.path.exists(final_file):
+        if os.path.exists(final_file):
             try:
                 os.remove(final_file)
             except:
