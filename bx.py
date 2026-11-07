@@ -3,7 +3,7 @@ import time
 import datetime
 import threading
 import uuid
-from flask import Flask, render_template_string, request, redirect, url_for
+from flask import Flask, render_template_string, request, redirect, url_for, Response, stream_with_context
 import requests
 import yt_dlp
 from pymongo import MongoClient
@@ -24,6 +24,9 @@ try:
     print("Conectado ao MongoDB com sucesso!")
 except Exception as e:
     print(f"Erro ao conectar no MongoDB: {e}")
+
+# Armazena temporariamente os links de streaming para o proxy
+active_downloads = {}
 
 def verificar_acesso_web(user_ip):
     hoje = datetime.datetime.utcnow().strftime("%Y-%m-%d")
@@ -91,7 +94,7 @@ def criar_preferencia_mercado_pago(user_ip):
         print(f"Erro MP: {e}")
         return None
 
-# --- Template HTML com Link Direto de Download ---
+# --- Template HTML com Botão de Download via Proxy ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -112,7 +115,7 @@ HTML_TEMPLATE = """
         .btn-vip { background: #d97706; margin-top: 10px; }
         .btn-vip:hover { background: #b45309; }
         .error { background: #7f1d1d; color: #fca5a5; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
-        .success { background: #065f46; color: #6ee7b7; padding: 15px; border-radius: 6px; margin-bottom: 15px; word-break: break-all; }
+        .success { background: #065f46; color: #6ee7b7; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
         .download-btn { display: inline-block; background: #10b981; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 10px; }
         .download-btn:hover { background: #059669; }
         input[type="text"].code-input { width: 70%; display: inline-block; margin-right: 5px; }
@@ -123,23 +126,23 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <h1>Baixador de Vídeos</h1>
-        <p>Cole o link abaixo para extrair o vídeo instantaneamente.</p>
+        <p>Cole o link abaixo para processar seu vídeo instantaneamente.</p>
         
         {% if error %}
             <div class="error">{{ error }}</div>
         {% endif %}
 
-        {% if direct_url %}
+        {% if download_id %}
             <div class="success">
-                <p>Mídia extraída com sucesso!</p>
-                <a href="{{ direct_url }}" class="download-btn" target="_blank" download="video.mp4">Baixar Direto no Dispositivo</a>
+                <p>Vídeo pronto para download!</p>
+                <a href="/proxy-download/{{ download_id }}" class="download-btn">Baixar Arquivo .MP4</a>
                 <br><br>
-                <a href="/" style="color: #38bdf8; text-decoration: none;">Extrair outro</a>
+                <a href="/" style="color: #38bdf8; text-decoration: none;">Baixar outro</a>
             </div>
         {% else %}
             <form method="POST" action="/process">
                 <input type="text" name="url" placeholder="Cole o link (YouTube, Xvideos, Insta, etc)..." required>
-                <button type="submit">Extrair Link</button>
+                <button type="submit">Processar Vídeo</button>
             </form>
         {% endif %}
 
@@ -184,7 +187,6 @@ def process_video():
         return redirect(url_for('index', error="Insira um link válido!"))
 
     try:
-        # Bypass específico para TikTok caso necessário
         if "tiktok.com" in url:
             try:
                 res = requests.post("https://www.tikwm.com/api/", data={"url": url}, timeout=10).json()
@@ -193,9 +195,8 @@ def process_video():
             except:
                 pass
 
-        # Força a busca por links em MP4 progressivo direto
         ydl_opts = {
-            'format': 'best[ext=mp4]/best',
+            'format': 'best[height<=720]/best',
             'noplaylist': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
@@ -205,26 +206,56 @@ def process_video():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            direct_url = None
+            stream_url = None
             if 'url' in info and '.m3u8' not in info['url']:
-                direct_url = info['url']
+                stream_url = info['url']
             else:
                 for f in info.get('formats', []):
                     if f.get('ext') == 'mp4' and f.get('url') and '.m3u8' not in f.get('url'):
-                        direct_url = f.get('url')
+                        stream_url = f.get('url')
                         break
-                
-                if not direct_url:
-                    direct_url = info.get('url')
+                if not stream_url:
+                    stream_url = info.get('url')
 
-            if not direct_url or '.m3u8' in direct_url:
-                raise Exception("Formato MP4 direto indisponível para este link específico.")
+            if not stream_url:
+                raise Exception("Não foi possível extrair o link de vídeo.")
+
+        file_id = str(uuid.uuid4())
+        active_downloads[file_id] = {
+            'url': stream_url,
+            'referer': url
+        }
 
         registrar_uso_web(user_ip)
-        return render_template_string(HTML_TEMPLATE, status_texto="Pronto", direct_url=direct_url)
+        return render_template_string(HTML_TEMPLATE, status_texto="Pronto", download_id=file_id)
 
     except Exception as e:
-        return redirect(url_for('index', error=f"Erro ao extrair link: {str(e)}"))
+        return redirect(url_for('index', error=f"Erro ao processar: {str(e)}"))
+
+def generate_proxy(stream_url, referer):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': referer
+    }
+    try:
+        r = requests.get(stream_url, stream=True, headers=headers, timeout=30)
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                yield chunk
+    except Exception as e:
+        print(f"Erro no proxy: {e}")
+
+@app.route("/proxy-download/<file_id>")
+def proxy_download(file_id):
+    data = active_downloads.get(file_id)
+    if not data:
+        return "Link expirado ou inválido.", 404
+    
+    return Response(
+        stream_with_context(generate_proxy(data['url'], data['referer'])),
+        mimetype='video/mp4',
+        headers={"Content-Disposition": "attachment; filename=video.mp4"}
+    )
 
 @app.route("/pay-mp")
 def pay_mp():
