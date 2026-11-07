@@ -45,7 +45,6 @@ try:
 except Exception as e:
     print(f"Erro ao conectar no MongoDB: {e}")
 
-# Armazena temporariamente os links pendentes
 user_pending_links = {}
 
 def human_readable(bytes_num):
@@ -62,7 +61,6 @@ def verificar_acesso(user_id):
 
     hoje = datetime.datetime.utcnow().strftime("%Y-%m-%d")
     
-    # 1. Verifica se tem assinatura VIP ativa
     sub = subs_col.find_one({"user_id": user_id})
     if sub:
         expires_at = sub.get("expires_at")
@@ -71,7 +69,6 @@ def verificar_acesso(user_id):
         else:
             subs_col.delete_one({"user_id": user_id})
 
-    # 2. Verifica limite diário gratuito (1 vídeo por dia)
     user_data = users_col.find_one({"user_id": user_id})
     
     if not user_data or user_data.get("date") != hoje:
@@ -128,6 +125,20 @@ def criar_preferencia_mercado_pago(user_id):
         print(f"Erro ao criar preferência MP: {e}")
         return None
 
+# --- Função de Bypass Inteligente para o TikTok ---
+def resolver_link_tiktok(url):
+    if "tiktok.com" not in url:
+        return url
+    try:
+        api_url = "https://www.tikwm.com/api/"
+        res = requests.post(api_url, data={"url": url}, timeout=10).json()
+        if res.get("code") == 0:
+            # Retorna o link direto do vídeo sem marca d'água provido pela API externa
+            return res["data"]["play"]
+    except Exception as e:
+        print(f"Erro no bypass do TikTok: {e}")
+    return url
+
 # --- Handlers do Bot ---
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -165,17 +176,17 @@ def handle_link_input(message):
         )
         return
 
-    url = message.text.strip()
+    raw_url = message.text.strip()
     msg = bot.reply_to(message, "🔍 Analisando o link e verificando o tamanho do vídeo...")
     
-    # Opções com cabeçalho de navegador para evitar bloqueio do TikTok
+    # Aplica o bypass se for TikTok
+    url = resolver_link_tiktok(raw_url)
+    
     ydl_meta_opts = {
         'noplaylist': True,
         'socket_timeout': 30,
         'nocheckcertificate': True,
         'geo_bypass': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'referer': 'https://www.tiktok.com/',
     }
     
     try:
@@ -216,9 +227,9 @@ def handle_link_input(message):
 
     except Exception as e:
         try:
-            bot.edit_message_text(f"❌ **Erro ao analisar o link:**\n`{str(e)}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
+            bot.edit_message_text(f"❌ **Erro ao processar o vídeo:**\n`{str(e)}`", chat_id=message.chat.id, message_id=msg.message_id, parse_mode="Markdown")
         except:
-            bot.send_message(message.chat.id, f"❌ Erro ao analisar o link: {str(e)}")
+            bot.send_message(message.chat.id, f"❌ Erro ao processar o vídeo: {str(e)}")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dl_'))
 def callback_resolution(call):
@@ -303,8 +314,6 @@ def executar_download_e_envio(message, url, resolution_limit=None):
         'socket_timeout': 30,
         'nocheckcertificate': True,
         'geo_bypass': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'referer': 'https://www.tiktok.com/',
         'progress_hooks': [yt_progress_hook],
     }
     
