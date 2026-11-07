@@ -30,7 +30,7 @@ threading.Thread(target=run_keep_alive_server, daemon=True).start()
 # --- Configurações e Credenciais (Seguras via Variáveis de Ambiente) ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 OWNER_ID = int(os.environ.get("OWNER_ID", "7711945457"))
-MP = os.environ.get("MP")
+MP_ACCESS_TOKEN = os.environ.get("MP_ACCESS_TOKEN")
 MONGO_URI = os.environ.get("MONGO_URI")
 
 bot = telebot.TeleBot(TOKEN)
@@ -100,7 +100,7 @@ def registrar_uso(user_id):
 def criar_preferencia_mercado_pago(user_id):
     url = "https://api.mercadopago.com/checkout/preferences"
     headers = {
-        "Authorization": f"Bearer {MP}",
+        "Authorization": f"Bearer {MP_ACCESS_TOKEN}",
         "Content-Type": "application/json"
     }
     data = {
