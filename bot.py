@@ -87,8 +87,9 @@ def download_video(message):
             except:
                 pass
 
+    # Trava configurada para 720p para proteger a RAM do servidor gratuito do Render
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'bv*[height<=720]+ba/b[height<=720] / best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'merge_output_format': 'mp4',
         'noplaylist': True,
@@ -113,7 +114,7 @@ def download_video(message):
         upload_start_time = [time.time()]
         last_upload_update = [0]
 
-        # Classe customizada para monitorar o progresso do UPLOAD (enviando arquivo em pedaços)
+        # Classe customizada para monitorar o progresso do UPLOAD
         class ProgressFileWrapper:
             def __init__(self, filename):
                 self._file = open(filename, 'rb')
@@ -124,7 +125,6 @@ def download_video(message):
                     uploaded_bytes[0] += len(data)
                     now = time.time()
                     
-                    # Atualiza a mensagem a cada 2 segundos no chat
                     if now - last_upload_update[0] >= 2:
                         last_upload_update[0] = now
                         elapsed = now - upload_start_time[0]
@@ -156,7 +156,6 @@ def download_video(message):
 
         bot.edit_message_text("⬆️ Iniciando envio do arquivo...", chat_id=message.chat.id, message_id=msg.message_id)
 
-        # Envia como documento para aceitar arquivos grandes e exibe o progresso de upload
         with ProgressFileWrapper(final_file) as wrapped_file:
             bot.send_document(message.chat.id, wrapped_file, visible_file_name=os.path.basename(final_file))
             
