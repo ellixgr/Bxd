@@ -3,7 +3,7 @@ import time
 import datetime
 import threading
 import uuid
-from flask import Flask, render_template_string, request, redirect, url_for, send_file
+from flask import Flask, render_template_string, request, redirect, url_for
 import requests
 import yt_dlp
 from pymongo import MongoClient
@@ -24,16 +24,6 @@ try:
     print("Conectado ao MongoDB com sucesso!")
 except Exception as e:
     print(f"Erro ao conectar no MongoDB: {e}")
-
-# Armazena temporariamente os arquivos gerados para download web
-active_downloads = {}
-
-def human_readable(bytes_num):
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if bytes_num < 1024.0:
-            return f"{bytes_num:.2f} {unit}"
-        bytes_num /= 1024.0
-    return f"{bytes_num:.2f} TB"
 
 def verificar_acesso_web(user_ip):
     hoje = datetime.datetime.utcnow().strftime("%Y-%m-%d")
@@ -101,7 +91,7 @@ def criar_preferencia_mercado_pago(user_ip):
         print(f"Erro MP: {e}")
         return None
 
-# --- Template HTML Limpo e Direto ---
+# --- Template HTML com Link Direto de Download ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -122,7 +112,7 @@ HTML_TEMPLATE = """
         .btn-vip { background: #d97706; margin-top: 10px; }
         .btn-vip:hover { background: #b45309; }
         .error { background: #7f1d1d; color: #fca5a5; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 14px; }
-        .success { background: #065f46; color: #6ee7b7; padding: 15px; border-radius: 6px; margin-bottom: 15px; }
+        .success { background: #065f46; color: #6ee7b7; padding: 15px; border-radius: 6px; margin-bottom: 15px; word-break: break-all; }
         .download-btn { display: inline-block; background: #10b981; color: white; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 10px; }
         .download-btn:hover { background: #059669; }
         input[type="text"].code-input { width: 70%; display: inline-block; margin-right: 5px; }
@@ -133,23 +123,23 @@ HTML_TEMPLATE = """
 <body>
     <div class="container">
         <h1>Baixador de Vídeos</h1>
-        <p>Cole o link abaixo para baixar seu vídeo instantaneamente.</p>
+        <p>Cole o link abaixo para extrair o vídeo instantaneamente.</p>
         
         {% if error %}
             <div class="error">{{ error }}</div>
         {% endif %}
 
-        {% if download_file_id %}
+        {% if direct_url %}
             <div class="success">
-                <p>Vídeo pronto para download!</p>
-                <a href="/download-file/{{ download_file_id }}" class="download-btn">Baixar Arquivo .MP4</a>
+                <p>Mídia extraída com sucesso!</p>
+                <a href="{{ direct_url }}" class="download-btn" target="_blank" download>Baixar Direto no Dispositivo</a>
                 <br><br>
-                <a href="/" style="color: #38bdf8; text-decoration: none;">Baixar outro</a>
+                <a href="/" style="color: #38bdf8; text-decoration: none;">Extrair outro</a>
             </div>
         {% else %}
             <form method="POST" action="/process">
                 <input type="text" name="url" placeholder="Cole o link (YouTube, Xvideos, Insta, etc)..." required>
-                <button type="submit">Baixar Vídeo</button>
+                <button type="submit">Extrair Link</button>
             </form>
         {% endif %}
 
@@ -193,10 +183,6 @@ def process_video():
     if not url:
         return redirect(url_for('index', error="Insira um link válido!"))
 
-    os.makedirs("downloads", exist_ok=True)
-    file_id = str(uuid.uuid4())
-    final_file = os.path.join("downloads", f"{file_id}.mp4")
-
     try:
         # Bypass específico para TikTok caso necessário
         if "tiktok.com" in url:
@@ -207,45 +193,34 @@ def process_video():
             except:
                 pass
 
-        # Configuração ultra-otimizada para servidores de 512MB de RAM (Evita SIGKILL)
+        # Extração leve apenas de metadados e URL direta de streaming (Consumo de RAM zero)
         ydl_opts = {
-            'format': 'best[height<=480]/best',
-            'outtmpl': final_file,
+            'format': 'best[height<=720]/best',
             'noplaylist': True,
             'nocheckcertificate': True,
             'geo_bypass': True,
-            'concurrent_fragment_downloads': 1,
             'extractor_args': {'generic': {'impersonate': True}},
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-
-        if not os.path.exists(final_file) or os.path.getsize(final_file) == 0:
-            for f in os.listdir("downloads"):
-                if file_id in f:
-                    matched_path = os.path.join("downloads", f)
-                    if os.path.getsize(matched_path) > 0:
-                        final_file = matched_path
-                        break
-
-        if not os.path.exists(final_file) or os.path.getsize(final_file) == 0:
-            raise Exception("Não foi possível extrair a mídia principal deste link.")
+            info = ydl.extract_info(url, download=False)
+            if 'url' in info:
+                direct_url = info['url']
+            elif 'requested_formats' in info:
+                direct_url = info['requested_formats'][0]['url']
+            else:
+                # Tenta pegar do entries se for playlist/objeto composto
+                formats = info.get('formats', [])
+                if formats:
+                    direct_url = formats[-1]['url']
+                else:
+                    raise Exception("Formato direto não encontrado.")
 
         registrar_uso_web(user_ip)
-        active_downloads[file_id] = final_file
-
-        return render_template_string(HTML_TEMPLATE, status_texto="Pronto", download_file_id=file_id)
+        return render_template_string(HTML_TEMPLATE, status_texto="Pronto", direct_url=direct_url)
 
     except Exception as e:
-        return redirect(url_for('index', error=f"Erro ao processar link: {str(e)}"))
-
-@app.route("/download-file/<file_id>")
-def download_file(file_id):
-    path = active_downloads.get(file_id)
-    if path and os.path.exists(path):
-        return send_file(path, as_attachment=True, download_name="video.mp4")
-    return "Arquivo expirado ou inválido.", 404
+        return redirect(url_for('index', error=f"Erro ao extrair link: {str(e)}"))
 
 @app.route("/pay-mp")
 def pay_mp():
